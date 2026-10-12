@@ -6,7 +6,3 @@ old
 logs/*
 vagrant/*
 generated/*
-*.tar.gz
-vendor/
-.bundle
-_site/
