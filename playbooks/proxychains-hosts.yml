@@ -1,0 +1,6 @@
+---
+- name: Installs Proxychains on host
+  hosts: proxychains-hosts
+  become: true
+  roles:
+    - proxychains
