@@ -1,6 +1,0 @@
----
-- name: Installs Syft on host
-  hosts: vagrant-ubuntu-1
-  become: true
-  roles:
-    - syft

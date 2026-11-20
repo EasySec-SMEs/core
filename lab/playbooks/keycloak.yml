@@ -1,16 +1,14 @@
 ---
 - name: Installs PostgreSQL on host
-  hosts: vagrant-keycloak-1
+  hosts: vagrant-postgresql-2
   become: true
   roles:
     - ssl
     - postgresql
   vars:
-    ssl_provider: selfsigned
     ssl_cert_path: /etc/ssl/certs/postgresql.crt
     ssl_key_path: /etc/ssl/private/postgresql.key
-    ssl_generate: true
-    ssl_domain: "postgresql.easysec.x"
+    ssl_domain: keycloak.postgresql.easysec.es
 
     postgresql_ssl:
       cert_path: /etc/ssl/certs/postgresql.crt
@@ -37,7 +35,6 @@
     - ssl
     - keycloak
   vars:
-    ssl_provider: "selfsigned"
     ssl_domain: "{{ keycloak_hostname }}"
     ssl_cert_path: /etc/ssl/certs/keycloak.pem
     ssl_key_path: /etc/ssl/private/keycloak.key

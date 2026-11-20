@@ -1,0 +1,8 @@
+---
+- name: Base configuration - Hardening, Lynis installation and Audit execution
+  hosts: vagrant
+  become: true
+  roles:
+    - hardening
+    - lynis
+    - audit
