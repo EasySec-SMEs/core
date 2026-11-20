@@ -1,6 +1,0 @@
----
-- name: Starts hardening on host
-  hosts: vagrant-hardening-1
-  become: true
-  roles:
-    - hardening
