@@ -6,3 +6,4 @@ old
 logs/*
 vagrant/*
 generated/*
+lab/vault/.vault_pass
