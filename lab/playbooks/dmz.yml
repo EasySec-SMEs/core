@@ -1,0 +1,8 @@
+---
+- name: Installs and configures Anchore workflow
+  hosts: dmz
+  become: true
+  roles:
+    - syft
+    - grype
+    - grant

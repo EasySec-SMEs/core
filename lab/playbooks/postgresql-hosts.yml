@@ -1,6 +1,6 @@
 ---
 - name: Installs PostgreSQL on host
-  hosts: vagrant-postgresql-1
+  hosts: postgresql-hosts
   become: true
   roles:
     - ssl
