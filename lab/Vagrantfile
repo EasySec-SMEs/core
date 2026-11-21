@@ -8,7 +8,6 @@ Vagrant.configure("2") do |config|
     config.vm.provider "virtualbox" do |vb|
         vb.linked_clone = true
         vb.check_guest_additions = false
-        #vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"] # Allows promiscuous mode
         vb.gui = false
     end
 
@@ -148,8 +147,29 @@ Vagrant.configure("2") do |config|
         },
     ]
 
-    ## PLAYBOOK LIST
-    playbook_list = ["all", "dmz", "keycloak", "postgresql-hosts", "proxychains-hosts"]
+    ## PLAYBOOK LIST - "path" refers to folder inside playbooks/
+    playbook_list = [
+        {
+            name: "all",
+            path: "groups"
+        },
+        {
+            name: "dmz",
+            path: "zones"
+        },
+        {
+            name: "keycloak",
+            path: "groups"
+        },
+        {
+            name: "postgresql",
+            path: "groups"
+        },
+        {
+            name: "proxychains",
+            path: "groups"
+        }
+    ]
 
     puts "\n─────────────────────────────────────"
     puts "  EasySec - Loading environment"
@@ -190,10 +210,28 @@ Vagrant.configure("2") do |config|
             end
             
             # Network segmentation
-            server.fetch(:networks, []).each do |zone, ip|
+            server.fetch(:networks, []).each_with_index do |(zone, ip), index|
+                is_kali = server[:box].include?("kalilinux")
+
                 vm.vm.network "private_network",
                     ip: ip,
+                    auto_config: !is_kali,
                     virtualbox__intnet: zone.to_s
+                
+                # Configures manually for Kali Linux
+                if is_kali
+                    iface = "eth#{index + 1}"
+
+                    vm.vm.provision "shell", run: "always", inline: <<-SCRIPT
+                        if nmcli -t -f NAME con show | grep -qx "#{zone}"; then
+                            nmcli con modify "#{zone}" connection.interface-name #{iface} ipv4.method manual ipv4.addresses #{ip}/24 ipv6.method ignore
+                        else
+                            nmcli con add type ethernet ifname #{iface} con-name "#{zone}" ipv4.method manual ipv4.addresses #{ip}/24 ipv6.method ignore
+                        fi
+
+                        nmcli con up "#{zone}" || true
+                    SCRIPT
+                end
             end
 
             # Playbook execution + Private RSA provision
@@ -222,8 +260,8 @@ Vagrant.configure("2") do |config|
                 SCRIPT
 
                 playbook_list.each do |task|
-                    vm.vm.provision task, type: "ansible_local", run: "never" do |ansible|
-                        ansible.playbook = "playbooks/#{task}.yml"
+                    vm.vm.provision task[:name], type: "ansible_local", run: "never" do |ansible|
+                        ansible.playbook = "playbooks/#{task[:path]}/#{task[:name]}.yml"
                         ansible.inventory_path = "inventory/hosts.yml"
                         ansible.provisioning_path = "/vagrant/lab"
                         ansible.limit = "all"
