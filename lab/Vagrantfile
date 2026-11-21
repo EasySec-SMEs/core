@@ -3,11 +3,13 @@ Vagrant.configure("2") do |config|
         config.destroy_on_finish.enabled = true
     end
 
+    ## PRE-CONFIGURATIONS
     # Config for VirtualBox
     config.vm.provider "virtualbox" do |vb|
         vb.linked_clone = true
         vb.check_guest_additions = false
-        vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"] # Allows promiscuous mode
+        #vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"] # Allows promiscuous mode
+        vb.gui = false
     end
 
     # Generate RSA keys on the host before provisioning
@@ -22,132 +24,210 @@ Vagrant.configure("2") do |config|
         "~/.vagrant.d/insecure_private_key"
     ]
     config.ssh.insert_key = false
-    config.trigger.after :up do |trigger|
-        trigger.name = "Bootstrap SSH keys"
-        trigger.run_remote = {
-            inline: <<-SCRIPT
-                cp /vagrant/vagrant/id_rsa.pub /home/vagrant/.ssh/id_rsa.pub
-                cp /vagrant/vagrant/id_rsa /home/vagrant/.ssh/id_rsa
-                cat /vagrant/vagrant/id_rsa.pub >> /home/vagrant/.ssh/authorized_keys
-                chown vagrant:vagrant /home/vagrant/.ssh/id_rsa*
-                chmod 600 /home/vagrant/.ssh/id_rsa*
-            SCRIPT
-        }
-    end
 
-    ## Servers to set up
-    ALL_SERVERS = [
-        { name: "vagrant-kali-1", box: "kalilinux/rolling", ip: "192.168.56.3", memory: "2048", cpus: 2, boot_timeout: 600, disks: [] },
-        { name: "vagrant-ubuntu-1", box: "ubuntu/jammy64", ip: "192.168.56.4", memory: "2048", cpus: 2, boot_timeout: 600, disks: [] },
-        { name: "vagrant-keycloak-1", box: "ubuntu/jammy64", ip: "192.168.56.5", memory: "4096", cpus: 2, boot_timeout: 600, disks: [] },
-        { name: "vagrant-postgresql-1", box: "ubuntu/jammy64", ip: "192.168.56.6", memory: "2048", cpus: 2, boot_timeout: 600, disks: [] },
-        { name: "vagrant-audit-1", box: "ubuntu/jammy64", ip: "192.168.56.7", memory: "2048", cpus: 4, boot_timeout: 600, disks: [] },
-        { name: "vagrant-hardening-1", box: "ubuntu/jammy64", ip: "192.168.56.8", memory: "4096", cpus: 4, boot_timeout: 600, disks: 
-            [
-                { name: "hardening-data", size: "40GB" }
-            ]
-        },
-
-        # Must always be set the last one to avoid Ansible execution before setting up all servers
-        { name: "vagrant-manager-1", box: "ubuntu/jammy64", ip: "192.168.56.2", memory: "512", cpus: 1, boot_timeout: 600, disks: [] },
-    ]
-
-    # Tasks to execute - Single playbooks and complete workflows
-    ALL_MODULES = ["proxychains", "lynis", "grype", "syft", "grant", "ssl", "postgresql", "audit", "hardening"]
-    ALL_WORKFLOWS = ["anchore", "keycloak"]
-    MAPPING_SERVERS = {
-        "proxychains" => ["vagrant-kali-1"],
-        "lynis"       => ["vagrant-ubuntu-1"],
-        "grype"       => ["vagrant-ubuntu-1"],
-        "syft"        => ["vagrant-ubuntu-1"],
-        "grant"       => ["vagrant-ubuntu-1"],
-        "ssl"         => ["vagrant-ubuntu-1"],
-        "postgresql"  => ["vagrant-postgresql-1"],
-        "keycloak"    => ["vagrant-keycloak-1", "vagrant-postgresql-1"],
-        "anchore"     => ["vagrant-ubuntu-1"],
-        "hardening"   => ["vagrant-hardening-1"],
-        "audit"       => ["vagrant-audit-1"]
+    ## ZONE LIST
+    zone_list = {
+        external: "192.168.10",
+        dmz: "192.168.20",
+        trusted: "192.168.30",
+        restricted: "192.168.40",
+        management: "192.168.50"
     }
 
-    # Updates list if requested by the user
-    modules = ENV.fetch("CUSTOM_MODULES", "").split(",").map(&:strip).reject(&:empty?)
-    playbooks = modules.empty? ? ALL_MODULES : ALL_MODULES & modules
-    workflows = modules.empty? ? ALL_WORKFLOWS : ALL_WORKFLOWS & modules
-    
-    # Only load required servers to speed-up setup
-    required_servers = if modules.empty?
-        ALL_SERVERS.map { |s| s[:name] }
-    else
-        modules.flat_map { |mod| MAPPING_SERVERS.fetch(mod, []) }.uniq
-    end
+    ## SERVER LIST
+    server_list = [
+        { 
+            name: "vagrant-ubuntu-1", 
+            box: "cloud-image/ubuntu-22.04",
+            networks: {
+                dmz: "192.168.20.10",
+                management: "192.168.50.10"
+            },
+            memory: "1024",
+            cpus: 1
+        },
+        {
+            name: "vagrant-ubuntu-2", 
+            box: "cloud-image/ubuntu-24.04",
+            networks: {
+                dmz: "192.168.20.20",
+                management: "192.168.50.11",
+            },
+            memory: "1024",
+            cpus: 1
+        },
+        { 
+            name: "vagrant-ubuntu-3",
+            box: "cloud-image/ubuntu-26.04",
+            networks: {
+                dmz: "192.168.20.30",
+                management: "192.168.50.12",
+            },
+            memory: "1024",
+            cpus: 1
+        },
+        {
+            name: "vagrant-rocky-1",
+            box: "cloud-image/rocky-9",
+            networks: {
+                trusted: "192.168.30.10",
+                management: "192.168.50.13",
+            },
+            memory: "768", 
+            cpus: 1
+        },
+        {
+            name: "vagrant-rocky-2",
+            box: "cloud-image/rocky-9",
+            networks: {
+                trusted: "192.168.30.20",
+                management: "192.168.50.14",
+            },
+            memory: "768", 
+            cpus: 1
+        },
+        {
+            name: "vagrant-rocky-3",
+            box: "cloud-image/rocky-9",
+            networks: {
+                trusted: "192.168.30.30",
+                management: "192.168.50.15",
+            },
+            memory: "768", 
+            cpus: 1
+        },
+        {
+            name: "vagrant-kali-1",
+            box: "kalilinux/rolling",
+            networks: {
+                trusted: "192.168.30.40",
+                management: "192.168.50.16",
+            },
+            memory: "2048", 
+            cpus: 2
+        },
+        {
+            name: "vagrant-postgresql-1",
+            box: "cloud-image/rocky-9",
+            public_ip: "192.168.40.10",
+            networks: {
+                restricted: "192.168.40.10",
+                management: "192.168.50.17",
+            },
+            memory: "1536", 
+            cpus: 2
+        },
+        {
+            name: "vagrant-postgresql-2",
+            box: "cloud-image/rocky-9",
+            networks: {
+                restricted: "192.168.40.20",
+                management: "192.168.50.18",
+            },
+            memory: "1536", 
+            cpus: 2
+        },
+        { 
+            name: "vagrant-keycloak-1",
+            box: "cloud-image/rocky-9",
+            networks: {
+                trusted: "192.168.40.50",
+                management: "192.168.50.19",
+            },
+            memory: "2560", 
+            cpus: 2
+        },
+        { 
+            name: "vagrant-manager-1",
+            box: "cloud-image/ubuntu-24.04",
+            networks: {
+                management: "192.168.50.254",
+            },
+            memory: "512", 
+            cpus: 1
+        },
+    ]
 
-    # Always include manager
-    required_servers << "vagrant-manager-1"
-    required_servers.uniq!
-
-    servers = ALL_SERVERS.select { |s| required_servers.include?(s[:name]) }
+    ## PLAYBOOK LIST
+    playbook_list = ["all", "dmz", "keycloak", "postgresql-hosts", "proxychains-hosts"]
 
     puts "\n─────────────────────────────────────"
     puts "  EasySec - Loading environment"
-    puts "─────────────────────────────────────"
-    puts "  Modules  : #{modules.empty? ? "all" : modules.join(', ')}"
-    puts "  Servers  : #{servers.map { |s| s[:name] }.join(', ')}"
     puts "─────────────────────────────────────\n"
 
-    # Server setup
-    servers.each do |spec|
-        config.vm.define spec[:name] do |node|
-            node.vm.box = spec[:box]
-            node.vm.hostname = spec[:name]
-            node.vm.network "private_network", ip: "#{spec[:ip]}"
-            node.vm.boot_timeout = spec[:boot_timeout]
+    server_list.each do |server|
+        config.vm.define server[:name] do |vm|
+            # ---- Host config ---- #
+            vm.vm.box = server[:box]
+            vm.vm.hostname = server[:name]
+            vm.vm.boot_timeout = 600
             
-            # Apply custom CPU and memory modifications
-            if spec[:memory] || spec[:cpus]
-                node.vm.provider "virtualbox" do |vb|
-                    vb.memory = spec[:memory] if spec[:memory]
-                    vb.cpus = spec[:cpus] if spec[:cpus]
-                end
+            # Access key manipulation
+            vm.vm.provision "file", run: "always",
+                source: "vagrant/id_rsa.pub",
+                destination: "/tmp/id_rsa.pub"
+
+            vm.vm.provision "shell", run: "always", privileged: false, inline: <<-SCRIPT
+                set -e
+                mkdir -p ~/.ssh && chmod 700 ~/.ssh
+                mv /tmp/id_rsa.pub ~/.ssh/id_rsa.pub
+                touch ~/.ssh/authorized_keys
+                grep -qF "$(cat ~/.ssh/id_rsa.pub)" ~/.ssh/authorized_keys || cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+                chmod 600 ~/.ssh/authorized_keys
+                chmod 644 ~/.ssh/id_rsa.pub
+            SCRIPT
+
+            # Hardware manipulation
+            vm.vm.provider "virtualbox" do |vb|
+                vb.memory = server[:memory] if server[:memory]
+                vb.cpus = server[:cpus] if server[:cpus]
             end
 
-            # Additional disks
-            spec.fetch(:disks, []).each do |disk|
-                node.vm.disk :disk,
+            server.fetch(:disks, []).each do |disk|
+                vm.vm.disk :disk,
                     name: disk[:name],
                     size: disk[:size]
             end
             
-            # Playbooks and workflows execution (from manager node)
-            if spec[:name] == "vagrant-manager-1"
-                playbooks.each do |task|
-                    node.vm.provision task, type: "ansible" do |ansible|
-                        ansible.playbook = "playbooks/#{task}.yml"
-                        ansible.inventory_path = "inventory/vagrant/hosts.yml"
-                        ansible.limit = "all"
-                        ansible.raw_ssh_args = [
-                            '-o ControlMaster=auto',
-                            '-o ControlPersist=300s',
-                            '-o PreferredAuthentications=publickey',
-                            '-o StrictHostKeyChecking=no',
-                            '-o UserKnownHostsFile=/dev/null',
-                            "-o IdentityFile=./vagrant/id_rsa"
-                        ]
-                    end
-                end
+            # Network segmentation
+            server.fetch(:networks, []).each do |zone, ip|
+                vm.vm.network "private_network",
+                    ip: ip,
+                    virtualbox__intnet: zone.to_s
+            end
 
-                workflows.each do |task|
-                    node.vm.provision task, type: "ansible" do |ansible|
-                        ansible.playbook = "workflows/#{task}.yml"
+            # Playbook execution + Private RSA provision
+            if server[:name] == "vagrant-manager-1"
+                # Sends the whole project (roles + playbooks) to manager
+                vm.vm.synced_folder "..", "/vagrant", type: "rsync",
+                    rsync__exclude: [".git/", ".vagrant/", ".venv/", "vault/"]
+
+                vm.vm.provision "file", run: "always",
+                    source: "vagrant/id_rsa",
+                    destination: "/tmp/id_rsa"
+
+                # Sends vault password to another path to avoid exposure
+                vm.vm.provision "file", run: "always",
+                    source: "vault/.vault_pass",
+                    destination: "/tmp/.vault_pass"
+
+                vm.vm.provision "shell", run: "always", privileged: false, inline: <<-SCRIPT
+                    set -e
+                    mv /tmp/.vault_pass ~/.vault_pass
+                    chmod 600 ~/.vault_pass
+
+                    mkdir -p ~/.ssh && chmod 700 ~/.ssh
+                    mv /tmp/id_rsa ~/.ssh/id_rsa
+                    chmod 600 ~/.ssh/id_rsa
+                SCRIPT
+
+                playbook_list.each do |task|
+                    vm.vm.provision task, type: "ansible_local", run: "never" do |ansible|
+                        ansible.playbook = "playbooks/#{task}.yml"
                         ansible.inventory_path = "inventory/hosts.yml"
+                        ansible.provisioning_path = "/vagrant/lab"
                         ansible.limit = "all"
-                        ansible.raw_ssh_args = [
-                            '-o ControlMaster=auto',
-                            '-o ControlPersist=300s',
-                            '-o PreferredAuthentications=publickey',
-                            '-o StrictHostKeyChecking=no',
-                            '-o UserKnownHostsFile=/dev/null',
-                            "-o IdentityFile=./vagrant/id_rsa"
-                        ]
+                        ansible.install_mode = "default"
                     end
                 end
             end

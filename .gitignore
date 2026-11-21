@@ -7,3 +7,4 @@ logs/*
 vagrant/*
 generated/*
 lab/vault/.vault_pass
+lab/vagrant/*
