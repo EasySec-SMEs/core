@@ -8,7 +8,7 @@ Vagrant.configure("2") do |config|
     config.vm.provider "virtualbox" do |vb|
         vb.linked_clone = true
         vb.check_guest_additions = false
-        vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"] # Allows promiscuous mode
+        #vb.customize ["modifyvm", :id, "--nicpromisc2", "allow-all"] # Allows promiscuous mode
         vb.gui = false
     end
 
@@ -25,7 +25,7 @@ Vagrant.configure("2") do |config|
     ]
     config.ssh.insert_key = false
 
-    ## ZONE SETUP
+    ## ZONE LIST
     zone_list = {
         external: "192.168.10",
         dmz: "192.168.20",
@@ -34,7 +34,7 @@ Vagrant.configure("2") do |config|
         management: "192.168.50"
     }
 
-    ## SERVER SETUP
+    ## SERVER LIST
     server_list = [
         { 
             name: "vagrant-ubuntu-1", 
@@ -106,24 +106,13 @@ Vagrant.configure("2") do |config|
             memory: "2048", 
             cpus: 2
         },
-        { 
-            name: "vagrant-keycloak-1",
-            box: "cloud-image/rocky-9",
-            networks: {
-                trusted: "192.168.30.50",
-                management: "192.168.50.17",
-            },
-            memory: "2560", 
-            cpus: 2
-        },
         {
             name: "vagrant-postgresql-1",
             box: "cloud-image/rocky-9",
             public_ip: "192.168.40.10",
-            management_ip: "192.168.50.18",
             networks: {
                 restricted: "192.168.40.10",
-                management: "192.168.50.18",
+                management: "192.168.50.17",
             },
             memory: "1536", 
             cpus: 2
@@ -133,9 +122,19 @@ Vagrant.configure("2") do |config|
             box: "cloud-image/rocky-9",
             networks: {
                 restricted: "192.168.40.20",
-                management: "192.168.50.19",
+                management: "192.168.50.18",
             },
             memory: "1536", 
+            cpus: 2
+        },
+        { 
+            name: "vagrant-keycloak-1",
+            box: "cloud-image/rocky-9",
+            networks: {
+                trusted: "192.168.40.50",
+                management: "192.168.50.19",
+            },
+            memory: "2560", 
             cpus: 2
         },
         { 
@@ -148,6 +147,9 @@ Vagrant.configure("2") do |config|
             cpus: 1
         },
     ]
+
+    ## PLAYBOOK LIST
+    playbook_list = ["all", "dmz", "keycloak", "postgresql-hosts", "proxychains-hosts"]
 
     puts "\n─────────────────────────────────────"
     puts "  EasySec - Loading environment"
@@ -193,41 +195,42 @@ Vagrant.configure("2") do |config|
                     ip: ip,
                     virtualbox__intnet: zone.to_s
             end
+
+            # Playbook execution + Private RSA provision
+            if server[:name] == "vagrant-manager-1"
+                # Sends the whole project (roles + playbooks) to manager
+                vm.vm.synced_folder "..", "/vagrant", type: "rsync",
+                    rsync__exclude: [".git/", ".vagrant/", ".venv/", "vault/"]
+
+                vm.vm.provision "file", run: "always",
+                    source: "vagrant/id_rsa",
+                    destination: "/tmp/id_rsa"
+
+                # Sends vault password to another path to avoid exposure
+                vm.vm.provision "file", run: "always",
+                    source: "vault/.vault_pass",
+                    destination: "/tmp/.vault_pass"
+
+                vm.vm.provision "shell", run: "always", privileged: false, inline: <<-SCRIPT
+                    set -e
+                    mv /tmp/.vault_pass ~/.vault_pass
+                    chmod 600 ~/.vault_pass
+
+                    mkdir -p ~/.ssh && chmod 700 ~/.ssh
+                    mv /tmp/id_rsa ~/.ssh/id_rsa
+                    chmod 600 ~/.ssh/id_rsa
+                SCRIPT
+
+                playbook_list.each do |task|
+                    vm.vm.provision task, type: "ansible_local", run: "never" do |ansible|
+                        ansible.playbook = "playbooks/#{task}.yml"
+                        ansible.inventory_path = "inventory/hosts.yml"
+                        ansible.provisioning_path = "/vagrant/lab"
+                        ansible.limit = "all"
+                        ansible.install_mode = "default"
+                    end
+                end
+            end
         end
     end
 end
-            
-            # Playbooks and workflows execution (from manager node)
-            #if spec[:name] == "vagrant-manager-1"
-            #    playbooks.each do |task|
-            #        node.vm.provision task, type: "ansible" do |ansible|
-            #            ansible.playbook = "playbooks/#{task}.yml"
-            #            ansible.inventory_path = "inventory/vagrant/hosts.yml"
-            #            ansible.limit = "all"
-            #            ansible.raw_ssh_args = [
-            #                '-o ControlMaster=auto',
-            #                '-o ControlPersist=300s',
-            #                '-o PreferredAuthentications=publickey',
-            #                '-o StrictHostKeyChecking=no',
-            #                '-o UserKnownHostsFile=/dev/null',
-            #                "-o IdentityFile=./vagrant/id_rsa"
-            #            ]
-            #        end
-            #    end
-#
-            #    workflows.each do |task|
-            #        node.vm.provision task, type: "ansible" do |ansible|
-            #            ansible.playbook = "workflows/#{task}.yml"
-            #            ansible.inventory_path = "inventory/hosts.yml"
-            #            ansible.limit = "all"
-            #            ansible.raw_ssh_args = [
-            #                '-o ControlMaster=auto',
-            #                '-o ControlPersist=300s',
-            #                '-o PreferredAuthentications=publickey',
-            #                '-o StrictHostKeyChecking=no',
-            #                '-o UserKnownHostsFile=/dev/null',
-            #                "-o IdentityFile=./vagrant/id_rsa"
-            #            ]
-            #        end
-            #    end
-            #end
